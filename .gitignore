@@ -1,1 +1,14 @@
-.vscode/
+/obj
+/bin
+/GoogleBook.Unittests/bin
+/GoogleBook.Unittests/obj
+/GoogleBook.Api/bin
+/GoogleBook.Api/obj
+/GoogleBook.Api/appsettings.Development.json
+GoogleBook.Repository/bin
+GoogleBook.Repository/obj
+GoogleBook.Services/bin
+GoogleBook.Services/obj
+GoogleBook.Models/bin
+GoogleBook.Models/obj
+.vscode
