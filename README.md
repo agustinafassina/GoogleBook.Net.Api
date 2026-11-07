@@ -34,6 +34,8 @@ Book routes expect the `X-API-Key` header. In Swagger, click **Authorize** and p
 ## ⚙️ Configuration
 Settings live in `GoogleBook.Api/appsettings.json`.
 
+> 📝 `GoogleBook.Api/appsettings.example.json` shows every setting the API expects, with placeholder values. Use it as a template: copy the sections you need into `appsettings.json` (or `appsettings.Development.json`, which is git-ignored) and replace `replace_with_your_api_key` with your real keys. Do not commit real keys.
+
 ```json
 {
   "ExternalApis": {
