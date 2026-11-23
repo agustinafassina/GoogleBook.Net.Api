@@ -13,12 +13,12 @@ namespace GoogleBook.Api.Security
         public void OnAuthorization(AuthorizationFilterContext context)
         {
             IConfiguration? configuration = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            string? expectedApiKey = configuration["GameApi:ApiKey"]
-                ?? Environment.GetEnvironmentVariable("LIBRARIAN_CHALLENGE_GAME_API_KEY");
+            // "GameApi:ApiKey" is the legacy name, kept so existing deployments keep working.
+            string? expectedApiKey = FirstNonBlank(configuration["BooksApi:ApiKey"], configuration["GameApi:ApiKey"]);
 
             if (string.IsNullOrWhiteSpace(expectedApiKey))
             {
-                context.Result = new ObjectResult(new { message = "Game API key is not configured." })
+                context.Result = new ObjectResult(new { message = "API key is not configured." })
                 {
                     StatusCode = StatusCodes.Status503ServiceUnavailable
                 };
@@ -31,6 +31,9 @@ namespace GoogleBook.Api.Security
                 context.Result = new UnauthorizedObjectResult(new { message = "Invalid or missing API key." });
             }
         }
+
+        private static string? FirstNonBlank(params string?[] values) =>
+            values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
         private static bool ApiKeysMatch(string providedApiKey, string expectedApiKey)
         {

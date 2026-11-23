@@ -17,6 +17,11 @@ public class BookCatalogServiceTests
     private BookCatalogService CreateSut() => new(
         _repo.Object, _google.Object, _wikidata.Object, _tagging.Object, NullLogger<BookCatalogService>.Instance);
 
+    /// <summary>Makes the mocked atomic Update apply the mutation to <paramref name="stored"/>, like the real store does.</summary>
+    private void SetupAtomicUpdate(BookDto stored) =>
+        _repo.Setup(r => r.Update(stored.Id, It.IsAny<Action<BookDto>>()))
+            .Returns((int _, Action<BookDto> mutate) => { mutate(stored); return stored; });
+
     [Fact]
     public async Task SearchGoogleBooksAsync_returns_google_results_without_persisting()
     {
@@ -172,8 +177,7 @@ public class BookCatalogServiceTests
     public void AddTags_merges_without_duplicates()
     {
         var book = new BookDto { Id = 1, Title = "B", Tags = { "History" } };
-        _repo.Setup(r => r.GetById(1)).Returns(book);
-        _repo.Setup(r => r.Update(It.IsAny<BookDto>())).Returns((BookDto b) => b);
+        SetupAtomicUpdate(book);
 
         BookDto? result = CreateSut().AddTags(1, new[] { "history", "Fiction" });
 
@@ -236,12 +240,11 @@ public class BookCatalogServiceTests
     [Fact]
     public void AddTags_returns_null_when_book_missing()
     {
-        _repo.Setup(r => r.GetById(42)).Returns((BookDto?)null);
+        _repo.Setup(r => r.Update(42, It.IsAny<Action<BookDto>>())).Returns((BookDto?)null);
 
         BookDto? result = CreateSut().AddTags(42, new[] { "Fiction" });
 
         Assert.Null(result);
-        _repo.Verify(r => r.Update(It.IsAny<BookDto>()), Times.Never);
     }
 
     [Fact]
@@ -253,18 +256,85 @@ public class BookCatalogServiceTests
             Title = "Essays",
             Authors = new List<string> { "Virginia Woolf" }
         };
+        BookDto stored = book.Clone();
         _repo.Setup(r => r.GetById(7)).Returns(book);
+        SetupAtomicUpdate(stored);
         _wikidata.Setup(w => w.GetAuthorProfileAsync("Virginia Woolf", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AuthorDto { Name = "Virginia Woolf" });
-        _tagging.Setup(t => t.InferTags(book)).Returns(new[] { "Essays" });
-        _repo.Setup(r => r.Update(book)).Returns(book);
+        _tagging.Setup(t => t.InferTags(stored)).Returns(new[] { "Essays" });
 
         BookDto? result = await CreateSut().EnrichAuthorsAsync(7);
 
         Assert.NotNull(result);
         Assert.Single(result!.AuthorProfiles);
         Assert.Contains("Essays", result.Tags);
-        _repo.Verify(r => r.Update(book), Times.Once);
+        _repo.Verify(r => r.Update(7, It.IsAny<Action<BookDto>>()), Times.Once);
+    }
+
+    [Fact]
+    public void RemoveTag_removes_tag_case_insensitively()
+    {
+        var book = new BookDto { Id = 3, Title = "B", Tags = { "History", "Fiction" } };
+        SetupAtomicUpdate(book);
+
+        BookDto? result = CreateSut().RemoveTag(3, "  history ");
+
+        Assert.NotNull(result);
+        Assert.Equal(new[] { "Fiction" }, result!.Tags);
+    }
+
+    [Fact]
+    public void RemoveTag_returns_null_when_book_missing()
+    {
+        _repo.Setup(r => r.Update(9, It.IsAny<Action<BookDto>>())).Returns((BookDto?)null);
+
+        Assert.Null(CreateSut().RemoveTag(9, "Fiction"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Delete_returns_repository_result(bool removed)
+    {
+        _repo.Setup(r => r.Remove(5)).Returns(removed);
+
+        Assert.Equal(removed, CreateSut().Delete(5));
+    }
+
+    [Fact]
+    public void Search_pages_results_ordered_by_id_and_reports_totals()
+    {
+        List<BookDto> books = Enumerable.Range(1, 25)
+            .Reverse()
+            .Select(i => new BookDto { Id = i, Title = "Book " + i })
+            .ToList();
+        _repo.Setup(r => r.Find(null, null, null)).Returns(books);
+
+        PagedResult<BookDto> result = CreateSut().Search(new BookQuery { Page = 2, PageSize = 10 });
+
+        Assert.Equal(25, result.TotalCount);
+        Assert.Equal(3, result.TotalPages);
+        Assert.Equal(Enumerable.Range(11, 10), result.Items.Select(b => b.Id));
+    }
+
+    [Fact]
+    public void Search_trims_filters_and_clamps_page_size()
+    {
+        _repo.Setup(r => r.Find("woolf", "virginia", "Essays")).Returns(Array.Empty<BookDto>());
+
+        PagedResult<BookDto> result = CreateSut().Search(new BookQuery
+        {
+            Title = " woolf ",
+            Author = " virginia",
+            Tag = "Essays ",
+            Page = 0,
+            PageSize = 5000
+        });
+
+        Assert.Equal(1, result.Page);
+        Assert.Equal(BookQuery.MaxPageSize, result.PageSize);
+        Assert.Empty(result.Items);
+        _repo.Verify(r => r.Find("woolf", "virginia", "Essays"), Times.Once);
     }
 
     [Fact]

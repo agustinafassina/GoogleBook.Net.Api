@@ -29,6 +29,27 @@ namespace GoogleBook.Services.Implementations
 
         public IReadOnlyList<BookDto> GetAll() => _bookRepository.GetAll().ToList();
 
+        public PagedResult<BookDto> Search(BookQuery query)
+        {
+            ArgumentNullException.ThrowIfNull(query);
+
+            int page = Math.Max(1, query.Page);
+            int pageSize = Math.Clamp(query.PageSize, 1, BookQuery.MaxPageSize);
+
+            List<BookDto> matches = _bookRepository
+                .Find(query.Title?.Trim(), query.Author?.Trim(), query.Tag?.Trim())
+                .OrderBy(book => book.Id)
+                .ToList();
+
+            return new PagedResult<BookDto>
+            {
+                Items = matches.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = matches.Count
+            };
+        }
+
         public BookDto? GetById(int id) => _bookRepository.GetById(id);
 
         public IReadOnlyList<BookDto> GetByTag(string tag)
@@ -129,29 +150,61 @@ namespace GoogleBook.Services.Implementations
 
         public async Task<BookDto?> EnrichAuthorsAsync(int bookId, CancellationToken cancellationToken = default)
         {
-            BookDto? book = _bookRepository.GetById(bookId);
-            if (book is null)
+            BookDto? snapshot = _bookRepository.GetById(bookId);
+            if (snapshot is null)
             {
                 _logger.LogWarning("Cannot enrich authors: book {BookId} not found", bookId);
                 return null;
             }
 
-            await EnrichAuthorProfilesAsync(book, cancellationToken);
-            MergeTags(book, _taggingService.InferTags(book));
-            return _bookRepository.Update(book);
+            // Call Wikidata on a copy (slow, outside the store lock), then merge the result atomically.
+            await EnrichAuthorProfilesAsync(snapshot, cancellationToken);
+
+            BookDto? updated = _bookRepository.Update(bookId, stored =>
+            {
+                foreach (AuthorDto profile in snapshot.AuthorProfiles)
+                {
+                    if (!stored.AuthorProfiles.Any(p => string.Equals(p.Name, profile.Name, StringComparison.OrdinalIgnoreCase)))
+                        stored.AuthorProfiles.Add(profile);
+                }
+                MergeTags(stored, _taggingService.InferTags(stored));
+            });
+
+            if (updated is null)
+                _logger.LogWarning("Book {BookId} was deleted while its authors were being enriched", bookId);
+            return updated;
         }
 
         public BookDto? AddTags(int bookId, IEnumerable<string> tags)
         {
-            BookDto? book = _bookRepository.GetById(bookId);
-            if (book is null)
-            {
-                _logger.LogWarning("Cannot add tags: book {BookId} not found", bookId);
-                return null;
-            }
+            ArgumentNullException.ThrowIfNull(tags);
+            List<string> tagList = tags.ToList();
 
-            MergeTags(book, tags);
-            return _bookRepository.Update(book);
+            BookDto? updated = _bookRepository.Update(bookId, book => MergeTags(book, tagList));
+            if (updated is null)
+                _logger.LogWarning("Cannot add tags: book {BookId} not found", bookId);
+            return updated;
+        }
+
+        public BookDto? RemoveTag(int bookId, string tag)
+        {
+            string normalized = tag?.Trim() ?? string.Empty;
+
+            BookDto? updated = _bookRepository.Update(bookId, book =>
+                book.Tags.RemoveAll(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase)));
+            if (updated is null)
+                _logger.LogWarning("Cannot remove tag: book {BookId} not found", bookId);
+            return updated;
+        }
+
+        public bool Delete(int bookId)
+        {
+            bool removed = _bookRepository.Remove(bookId);
+            if (removed)
+                _logger.LogInformation("Deleted book {BookId}", bookId);
+            else
+                _logger.LogWarning("Cannot delete: book {BookId} not found", bookId);
+            return removed;
         }
 
         private async Task EnrichAuthorProfilesAsync(BookDto book, CancellationToken cancellationToken)

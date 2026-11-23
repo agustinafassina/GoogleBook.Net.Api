@@ -76,4 +76,84 @@ public class BookRepositoryTests
 
         Assert.Throws<KeyNotFoundException>(() => sut.Update(new BookDto { Id = 999, Title = "Missing" }));
     }
+
+    [Fact]
+    public void Returned_books_are_copies_so_callers_cannot_mutate_the_store()
+    {
+        var sut = new BookRepository();
+        BookDto added = sut.Add(new BookDto { Title = "Stored", Tags = { "History" } });
+
+        BookDto copy = sut.GetById(added.Id)!;
+        copy.Tags.Add("Mutated");
+        added.Tags.Add("AlsoMutated");
+
+        Assert.Equal(new[] { "History" }, sut.GetById(added.Id)!.Tags);
+    }
+
+    [Fact]
+    public void Atomic_update_applies_mutation_and_returns_null_for_missing_book()
+    {
+        var sut = new BookRepository();
+        BookDto added = sut.Add(new BookDto { Title = "Stored" });
+
+        BookDto? updated = sut.Update(added.Id, b => b.Tags.Add("Fiction"));
+        BookDto? missing = sut.Update(999, b => b.Tags.Add("Fiction"));
+
+        Assert.Equal(new[] { "Fiction" }, updated!.Tags);
+        Assert.Equal(new[] { "Fiction" }, sut.GetById(added.Id)!.Tags);
+        Assert.Null(missing);
+    }
+
+    [Fact]
+    public void Atomic_update_leaves_book_untouched_when_mutation_throws()
+    {
+        var sut = new BookRepository();
+        BookDto added = sut.Add(new BookDto { Title = "Stored" });
+
+        Assert.Throws<InvalidOperationException>(() => sut.Update(added.Id, b =>
+        {
+            b.Tags.Add("Partial");
+            throw new InvalidOperationException();
+        }));
+
+        Assert.Empty(sut.GetById(added.Id)!.Tags);
+    }
+
+    [Fact]
+    public void Concurrent_atomic_updates_do_not_lose_tags()
+    {
+        var sut = new BookRepository();
+        BookDto added = sut.Add(new BookDto { Title = "Busy" });
+
+        Parallel.For(0, 200, i => sut.Update(added.Id, b => b.Tags.Add("tag-" + i)));
+
+        Assert.Equal(200, sut.GetById(added.Id)!.Tags.Count);
+    }
+
+    [Fact]
+    public void Remove_deletes_book_and_ids_are_not_reused()
+    {
+        var sut = new BookRepository();
+        sut.Add(new BookDto { Title = "One" });
+        BookDto two = sut.Add(new BookDto { Title = "Two" });
+
+        Assert.True(sut.Remove(two.Id));
+        Assert.False(sut.Remove(two.Id));
+        Assert.Null(sut.GetById(two.Id));
+        Assert.Equal(3, sut.Add(new BookDto { Title = "Three" }).Id);
+    }
+
+    [Fact]
+    public void Find_combines_title_author_and_tag_filters()
+    {
+        var sut = new BookRepository();
+        sut.Add(new BookDto { Title = "Mrs Dalloway", Authors = new List<string> { "Virginia Woolf" }, Tags = { "Classics" } });
+        sut.Add(new BookDto { Title = "Orlando", Authors = new List<string> { "Virginia Woolf" }, Tags = { "Classics" } });
+        sut.Add(new BookDto { Title = "Mrs Something", Authors = new List<string> { "Someone Else" }, Tags = { "Classics" } });
+
+        List<BookDto> result = sut.Find(title: "mrs", author: "woolf", tag: "classics").ToList();
+
+        Assert.Single(result);
+        Assert.Equal("Mrs Dalloway", result[0].Title);
+    }
 }

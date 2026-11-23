@@ -9,5 +9,16 @@ namespace GoogleBook.Models.Dto
         public string? CountryOfCitizenship { get; set; }
         public string? Description { get; set; }
         public IReadOnlyList<string> Occupations { get; set; } = new List<string>();
+
+        public AuthorDto Clone() => new()
+        {
+            Name = Name,
+            WikidataId = WikidataId,
+            Gender = Gender,
+            SexualOrientation = SexualOrientation,
+            CountryOfCitizenship = CountryOfCitizenship,
+            Description = Description,
+            Occupations = Occupations.ToList()
+        };
     }
 }
