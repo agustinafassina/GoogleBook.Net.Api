@@ -1,6 +1,30 @@
-@GoogleBook.Api_HostAddress = http://localhost:5142
+@host = http://localhost:10000
+@apiKey = your-api-key
 
-GET {{GoogleBook.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+GET {{host}}/api/v1/book?title=history&page=1&pageSize=10
+X-API-Key: {{apiKey}}
+
+###
+
+GET {{host}}/api/v1/book/google/search?query=virginia%20woolf&maxResults=5
+X-API-Key: {{apiKey}}
+
+###
+
+POST {{host}}/api/v1/book/ingest/google
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{ "query": "virginia woolf", "maxResults": 5, "tags": ["Classics"] }
+
+###
+
+DELETE {{host}}/api/v1/book/1/tags/Classics
+X-API-Key: {{apiKey}}
+
+###
+
+DELETE {{host}}/api/v1/book/1
+X-API-Key: {{apiKey}}
 
 ###

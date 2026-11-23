@@ -18,13 +18,13 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.AddSecurityDefinition("GameApiKey", new OpenApiSecurityScheme
+    options.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
     {
         Description = "API key required by clients. Send it in the X-API-Key header.",
         Name = "X-API-Key",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
-        Scheme = "GameApiKey"
+        Scheme = "ApiKey"
     });
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -34,7 +34,7 @@ builder.Services.AddSwaggerGen(options =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "GameApiKey"
+                    Id = "ApiKey"
                 }
             },
             Array.Empty<string>()
@@ -130,7 +130,7 @@ app.UseCors("AllowSpecificOrigins");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Swagger stays available in Production so the game client / Render deploy can be explored.
+// Swagger stays available in Production so the Render deploy can be explored.
 app.UseSwagger();
 app.UseSwaggerUI();
 

@@ -5,6 +5,7 @@ namespace GoogleBook.Services.Interfaces
     public interface IBookCatalogService
     {
         IReadOnlyList<BookDto> GetAll();
+        PagedResult<BookDto> Search(BookQuery query);
         BookDto? GetById(int id);
         IReadOnlyList<BookDto> GetByTag(string tag);
         IReadOnlyList<BookDto> GetByAuthor(string author);
@@ -14,5 +15,7 @@ namespace GoogleBook.Services.Interfaces
         Task<IReadOnlyList<BookDto>> IngestFromGoogleBooksAsync(GoogleBooksIngestRequest request, CancellationToken cancellationToken = default);
         Task<BookDto?> EnrichAuthorsAsync(int bookId, CancellationToken cancellationToken = default);
         BookDto? AddTags(int bookId, IEnumerable<string> tags);
+        BookDto? RemoveTag(int bookId, string tag);
+        bool Delete(int bookId);
     }
 }

@@ -16,5 +16,24 @@ namespace GoogleBook.Models.Dto
         public string? ExternalId { get; set; }
         public List<string> Tags { get; set; } = new();
         public List<AuthorDto> AuthorProfiles { get; set; } = new();
+
+        /// <summary>Deep copy, so callers cannot mutate an instance held by the catalog store.</summary>
+        public BookDto Clone() => new()
+        {
+            Id = Id,
+            Title = Title,
+            Authors = Authors.ToList(),
+            Description = Description,
+            Publisher = Publisher,
+            PublishedDate = PublishedDate,
+            Language = Language,
+            ThumbnailUrl = ThumbnailUrl,
+            Isbns = Isbns.ToList(),
+            Categories = Categories.ToList(),
+            Source = Source,
+            ExternalId = ExternalId,
+            Tags = Tags.ToList(),
+            AuthorProfiles = AuthorProfiles.Select(profile => profile.Clone()).ToList()
+        };
     }
 }

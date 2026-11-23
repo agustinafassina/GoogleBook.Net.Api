@@ -17,7 +17,7 @@ A .NET 10 API that searches [Google Books](https://developers.google.com/books) 
 - `GoogleBook.Unittests` - tests (project `GoogleBook.Api.Tests`)
 
 ## ▶️ Run locally
-Set `GameApi:ApiKey` in `GoogleBook.Api/appsettings.json`, or set the `GameApi__ApiKey` environment variable, then:
+Set `BooksApi:ApiKey` in `GoogleBook.Api/appsettings.json`, or set the `BooksApi__ApiKey` environment variable, then:
 
 ```bash
 dotnet run --project GoogleBook.Api
@@ -29,7 +29,7 @@ The process listens on **10000** (`http://0.0.0.0:10000`). It reads `PORT` and f
 - Swagger: `http://localhost:10000/swagger`
 - Health: `GET /health` (`http://localhost:10000/health`)
 
-Book routes expect the `X-API-Key` header. In Swagger, click **Authorize** and paste the `GameApi:ApiKey` value. If that key is missing, those routes return 503.
+Book routes expect the `X-API-Key` header. In Swagger, click **Authorize** and paste the `BooksApi:ApiKey` value. If that key is missing, those routes return 503.
 
 ## ⚙️ Configuration
 Settings live in `GoogleBook.Api/appsettings.json`.
@@ -42,35 +42,39 @@ Settings live in `GoogleBook.Api/appsettings.json`.
     "GoogleBooks": { "BaseUrl": "https://www.googleapis.com/", "ApiKey": "" },
     "Wikidata": { "BaseUrl": "https://query.wikidata.org/" }
   },
-  "GameApi": { "ApiKey": "your-api-key" }
+  "BooksApi": { "ApiKey": "your-api-key" }
 }
 ```
 
-`GameApi:ApiKey` is required (`GameApi__ApiKey` in the environment). `ExternalApis:GoogleBooks:ApiKey` is optional (`ExternalApis__GoogleBooks__ApiKey`).
+`BooksApi:ApiKey` is required (`BooksApi__ApiKey` in the environment). The old name `GameApi:ApiKey` is still read as a fallback. `ExternalApis:GoogleBooks:ApiKey` is optional (`ExternalApis__GoogleBooks__ApiKey`).
 
 ## 🔗 Endpoints
 Base path `api/v1/book`. Send `X-API-Key` on every route below. `/health` does not use that header.
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| `GET` | `/api/v1/book` | Local catalog. Optional query: `?author=Name` |
+| `GET` | `/api/v1/book` | Local catalog, paged. Optional query: `title`, `author`, `tag`, `page` (default 1), `pageSize` (1-100, default 20) |
 | `GET` | `/api/v1/book/{id}` | One stored book |
+| `DELETE` | `/api/v1/book/{id}` | Remove a stored book (204, or 404) |
 | `GET` | `/api/v1/book/tags` | Tags present in the catalog |
 | `GET` | `/api/v1/book/by-tag/{tag}` | Filter the local catalog |
 | `GET` | `/api/v1/book/google/search` | Search Google Books by `query`. Does not persist |
 | `GET` | `/api/v1/book/google/by-tag/{tag}` | Search Google Books by tag. Does not persist |
 | `POST` | `/api/v1/book/ingest/google` | Search Google Books and store the new results |
 | `POST` | `/api/v1/book/{id}/tags` | Add tags to a stored book |
+| `DELETE` | `/api/v1/book/{id}/tags/{tag}` | Remove one tag from a stored book |
 | `POST` | `/api/v1/book/{id}/enrich` | Enrich authors via Wikidata |
 
-`/by-tag/{tag}` reads the in-memory catalog, which stays empty until you ingest or add tags. `/google/by-tag/{tag}` queries Google Books live (`subject:{tag}`, then fallbacks). Google search routes take `maxResults` (default 20) and `autoTag` (default true). When `autoTag` is true, Google Books categories are copied onto the books as tags.
+`/by-tag/{tag}` reads the in-memory catalog, which stays empty until you ingest or add tags. `/google/by-tag/{tag}` queries Google Books live (`subject:{tag}`, then fallbacks). Google search routes take `maxResults` (1-40, default 20) and `autoTag` (default true). When `autoTag` is true, Google Books categories are copied onto the books as tags.
+
+`GET /api/v1/book` returns `{ items, page, pageSize, totalCount, totalPages }`. `title` and `author` match partially, `tag` matches exactly, all case-insensitive.
 
 Ingest body: `query` (required), `maxResults` (1-40, default 10), `tags`, `autoTag` (default true), `enrichAuthors` (default false). Try the routes from Swagger.
 
 ## 🐳 Docker
 ```bash
 docker build -t googlebook-api:latest .
-docker run -d -p 10000:10000 -e "GameApi__ApiKey=your-api-key" --name googlebook-api googlebook-api:latest
+docker run -d -p 10000:10000 -e "BooksApi__ApiKey=your-api-key" --name googlebook-api googlebook-api:latest
 ```
 
 The container listens on **10000**. Swagger is `http://localhost:10000/swagger`, and the health check is `GET /health`.
